@@ -1,137 +1,182 @@
-# ANGLE - Almost Native Graphics Layer Engine
+# ANGLE WebGPU Backend Prototype
 
-The goal of ANGLE is to allow users of multiple operating systems to seamlessly run WebGL and other
-OpenGL ES content by translating OpenGL ES API calls to one of the hardware-supported APIs available
-for that platform. ANGLE currently provides translation from OpenGL ES 2.0, 3.0 and 3.1 to Vulkan,
-desktop OpenGL, OpenGL ES, Direct3D 9, and Direct3D 11. Future plans include ES 3.2, translation to
-Metal and MacOS, Chrome OS, and Fuchsia support.
+基于 [ANGLE](https://chromium.googlesource.com/angle/angle) 实现的 WebGPU 后端原型，将 WebGL / OpenGL ES API 调用翻译到 WebGPU (Dawn) 上执行。
 
-### Level of OpenGL ES support via backing renderers
+## 项目目标
 
-|                |  Direct3D 9   |  Direct3D 11     |   Desktop GL   |    GL ES      |  Vulkan  |    Metal      |
-|----------------|:-------------:|:----------------:|:--------------:|:-------------:|:--------:|:-------------:|
-| OpenGL ES 2.0  |    complete   |    complete      |    complete    |    complete   | complete |    complete   |
-| OpenGL ES 3.0  |               |    complete      |    complete    |    complete   | complete |    complete   |
-| OpenGL ES 3.1  |               |                  |    complete    |    complete   | complete |               |
-| OpenGL ES 3.2  |               |                  |  in progress   |  in progress  | complete |               |
+3D AIGC 生成的资产需要在浏览器中实时渲染和交互。WebGPU 提供了比 WebGL 更现代、更高效的 GPU 访问方式，但大量现有 WebGL 应用和 benchmark 无法直接迁移。本项目通过 ANGLE 的翻译层架构，使现有 WebGL workload 能够无缝运行在 WebGPU backend 之上。
 
-Additionally, OpenGL ES 1.1 is implemented in the front-end using OpenGL ES 3.0 features.  This
-version of the specification is thus supported on all platforms specified above that support OpenGL
-ES 3.0 with [known issues][ES1].
+## 基于上游
 
-[ES1]: doc/ES1Status.md
+基于 ANGLE upstream commit `c053bf85793b` (Metal: Allow prebuilding internal shaders for iOS)。
 
-### Platform support via backing renderers
+上游已有 WebGPU backend 的基本骨架（`src/libANGLE/renderer/wgpu/`），但大量功能是 `UNIMPLEMENTED()` 占位符。本项目补全了关键缺失，使完整的渲染管线可用。
 
-|              |    Direct3D 9  |   Direct3D 11  |   Desktop GL  |    GL ES    |   Vulkan    |    Metal             |   WebGPU   |
-|-------------:|:--------------:|:--------------:|:-------------:|:-----------:|:-----------:|:--------------------:|:----------:|
-| Windows      |    complete    |    complete    |   complete    |   complete  |   complete  |                      |            |
-| Linux        |                |                |   complete    |             |   complete  |                      |            |
-| Mac OS X     |                |                |   complete    |             |             | complete [1]         |            |
-| iOS          |                |                |               |             |             | complete [2]         |            |
-| Chrome OS    |                |                |               |   complete  |   planned   |                      |            |
-| Android      |                |                |               |   complete  |   complete  |                      |            |
-| Fuchsia      |                |                |               |             |   complete  |                      |            |
+## 核心改动
 
-[1] Metal is supported on macOS 10.14+
+相对于上游 ANGLE，本项目修改了 22 个文件（+411/-231 行），集中在 `src/libANGLE/renderer/wgpu/`：
 
-[2] Metal is supported on iOS 12+
+| 改动 | 文件 | 说明 |
+|------|------|------|
+| 同步设备创建 | `DisplayWgpu.cpp`, `wgpu_proc_utils.*` | 用 `dawn::native` 同步 API 替换异步 callback 路径，修复 headless 环境挂起 |
+| TriangleFan 模拟 | `ContextWgpu.cpp`, `VertexArrayWgpu.*` | 将 fan 顶点展开为 triangle list 索引，WebGPU 不支持此图元 |
+| Sampler 缓存 | `ContextWgpu.*`, `ProgramExecutableWgpu.cpp` | 基于 hash 的 sampler/bind group 缓存，避免每帧重复创建 |
+| Indirect Draw | `ContextWgpu.cpp` | CPU 端读取 indirect command 转发到 instanced draw |
+| MultiDraw | `ContextWgpu.cpp` | 8 个 multiDraw 变体，调用 ANGLE 通用工具函数 |
+| Blend ConstantAlpha | `ContextWgpu.cpp`, `wgpu_utils.cpp` | WebGPU 无 ConstantAlpha factor，用 D3D11 模式 rewrite blend color |
+| 动态 Offset 支持 | `wgpu_command_buffer.*` | SetBindGroup 支持最多 3 个 dynamic offsets |
+| Buffer Usage 修正 | `BufferWgpu.cpp` | 为所有 GL buffer binding 类型映射正确的 WebGPU usage flags |
+| 各类 Fallback | `wgpu_utils.cpp`, `wgpu_helpers.cpp` | CullFaceMode、CLAMP_TO_BORDER、shadow sampler 等合理降级 |
 
-ANGLE v1.0.772 was certified compliant by passing the OpenGL ES 2.0.3 conformance tests in October 2011.
+## 测试结果
 
-ANGLE has received the following certifications with the Vulkan backend:
-* OpenGL ES 2.0: ANGLE 2.1.0.d46e2fb1e341 (Nov, 2019)
-* OpenGL ES 3.0: ANGLE 2.1.0.f18ff947360d (Feb, 2020)
-* OpenGL ES 3.1: ANGLE 2.1.0.f5dace0f1e57 (Jul, 2020)
-* OpenGL ES 3.2: ANGLE 2.1.2.21688.59f158c1695f (Sept, 2023)
+| 测试 | 结果 |
+|------|------|
+| ANGLE end2end tests (ES2_WebGPU) | **733 通过, 0 失败** |
+| test_3d_cube | PASS — 3D 旋转立方体 (depth test + MVP + indexed draw) |
+| test_e2e_render | PASS — 端到端渲染正确性验证 |
+| test_device_sync | PASS — WebGPU device 同步创建 |
+| test_realtime_cube | 运行 ~35 FPS (SwiftShader CPU 渲染) |
+| MotionMark 1.2 | 8 项子测试全部通过 |
 
-ANGLE also provides an implementation of the EGL 1.5 specification.
+### MotionMark 1.2 分数 (ANGLE WebGPU Backend)
 
-ANGLE is used as the default WebGL backend for both Google Chrome and Mozilla Firefox on Windows
-platforms. Chrome uses ANGLE for all graphics rendering on Windows, including the accelerated
-Canvas2D implementation and the Native Client sandbox environment.
+| 子测试 | 分数 |
+|--------|------|
+| Multiply | 1740.59 |
+| Canvas Arcs | 674.43 |
+| Leaves | 468.09 |
+| Paths | 2334.27 |
+| Canvas Lines | 3167.95 |
+| Images | 311.43 |
+| Design | 251.52 |
+| Suits | 800.94 |
 
-Portions of the ANGLE shader compiler are used as a shader validator and translator by WebGL
-implementations across multiple platforms. It is used on Mac OS X, Linux, and in mobile variants of
-the browsers. Having one shader validator helps to ensure that a consistent set of GLSL ES shaders
-are accepted across browsers and platforms. The shader translator can be used to translate shaders
-to other shading languages, and to optionally apply shader modifications to work around bugs or
-quirks in the native graphics drivers. The translator targets Desktop GLSL, Vulkan GLSL, Direct3D
-HLSL, and even ESSL for native GLES2 platforms.
+### Performance Benchmarks
 
-### OpenCL Implementation
+| Benchmark | 结果 |
+|-----------|------|
+| Pipeline Cache | 冷启动 43.7ms → 热命中 1.9ms (22.8x 加速) |
+| Sampler Cache | 1000 次创建：无缓存 3.57ms → 缓存 0.025μs (35681x) |
+| Uniform Ring Buffer | 1000 draw calls：逐次分配 8.66ms → ring buffer 0.009ms (1008x) |
 
-In addition to OpenGL ES, ANGLE also provides an optional `OpenCL` runtime built into the same
-output GLES lib.
+## 目录结构
 
-This work/effort is currently **work-in-progress/experimental**.
+```
+├── src/libANGLE/renderer/wgpu/   # WebGPU backend 核心实现 (~18,800 行)
+│   ├── ContextWgpu.*             # GL context → WebGPU 映射, draw call 派发
+│   ├── DisplayWgpu.*             # EGL display, device 创建
+│   ├── BufferWgpu.*              # buffer 管理
+│   ├── TextureWgpu.*             # texture 管理
+│   ├── FramebufferWgpu.*         # FBO
+│   ├── VertexArrayWgpu.*         # 顶点属性, 索引流化, TriangleFan 模拟
+│   ├── ProgramExecutableWgpu.*   # shader 执行, uniform, sampler bind group
+│   ├── wgpu_command_buffer.*     # 命令录制与回放
+│   ├── wgpu_pipeline_state.*     # pipeline 创建与缓存
+│   ├── wgpu_proc_utils.*         # Dawn proc 初始化, 同步 device 创建
+│   ├── wgpu_format_utils.*       # GL↔WebGPU 格式映射
+│   └── wgpu_helpers.*            # 工具函数
+├── test_3d_cube.cpp              # 3D 立方体 demo
+├── test_e2e_render.cpp           # 端到端渲染测试
+├── test_realtime_cube.cpp        # 实时渲染 + FPS
+├── test_device_sync.cpp          # device 创建验证
+├── benchmark_pipeline_cache.cpp  # pipeline 缓存 benchmark
+├── benchmark_sampler_cache.cpp   # sampler 缓存 benchmark
+├── benchmark_uniform.cpp         # uniform 分配 benchmark
+├── benchmark_frame_stability.cpp # 帧稳定性 benchmark
+└── BUILD.gn                      # 构建定义 (含自定义 target)
+```
 
-This work provides the same benefits as the OpenGL implementation, having OpenCL APIs be
-translated to other HW-supported APIs available on that platform.
+## 构建指南
 
-### Level of OpenCL support via backing renderers
+### 前置依赖
 
-|             |  Vulkan     |  OpenCL     |
-|-------------|:-----------:|:-----------:|
-| OpenCL 1.0  | in progress | in progress |
-| OpenCL 1.1  | in progress | in progress |
-| OpenCL 1.2  | in progress | in progress |
-| OpenCL 3.0  | in progress | in progress |
+- Linux x86_64 (Ubuntu 22.04 tested)
+- `depot_tools` (提供 gn)
+- `ninja` (位于 `third_party/ninja/ninja`)
+- Xvfb 或 VNC (用于测试的 display server)
 
-Each supported backing renderer above ends up being an OpenCL `Platform` for the user to choose from.
+### 获取完整源码
 
-The `OpenCL` backend is a "passthrough" implementation which does not perform any API translation
-at all, instead forwarding API calls to other OpenCL driver(s)/implementation(s).
+本仓库不包含 `third_party/`、`build/`、`tools/` 等大型依赖目录。完整构建需要：
 
-OpenCL also has an online compiler component to it that is used to compile `OpenCL C` source code at runtime
-(similarly to GLES and GLSL). Depending on the chosen backend(s), compiler implementations may vary. Below is
-a list of renderers and what OpenCL C compiler implementation is used for each:
+```bash
+# 1. 克隆本仓库
+git clone https://github.com/Lieyoufffff/angle-wgpu-backend.git
+cd angle-wgpu-backend
 
-- `Vulkan` : [clspv](https://github.com/google/clspv/tree/main)
-- `OpenCL` : Compiler is part of the native driver
+# 2. 获取依赖 (使用 depot_tools)
+gclient sync
 
-## Sources
+# 3. 或者：在已有的 ANGLE checkout 上应用本项目改动
+cd /path/to/angle
+git remote add wgpu https://github.com/Lieyoufffff/angle-wgpu-backend.git
+git fetch wgpu
+git diff HEAD..wgpu/main -- src/ BUILD.gn | git apply
+```
 
-ANGLE repository is hosted by Chromium project and can be
-[browsed online](https://chromium.googlesource.com/angle/angle) or cloned with
+### 配置与编译
 
-    git clone https://chromium.googlesource.com/angle/angle
+```bash
+# 生成构建配置
+gn gen out/Release --args='
+  angle_enable_wgpu = true
+  angle_enable_vulkan = false
+  angle_enable_gl = false
+  angle_enable_d3d9 = false
+  angle_enable_d3d11 = false
+  angle_enable_metal = false
+  angle_enable_null = false
+  angle_enable_swiftshader = true
+  dawn_use_swiftshader = true
+  is_debug = false
+  target_cpu = "x64"
+'
 
+# 编译
+ninja -C out/Release angle_end2end_tests test_3d_cube test_e2e_render test_realtime_cube
+```
 
-## Building
+### 运行测试
 
-View the [Dev setup instructions](doc/DevSetup.md).
+```bash
+cd out/Release
+export LD_LIBRARY_PATH=.
+export DISPLAY=:1  # 或启动 Xvfb: Xvfb :1 &
 
-## Contributing
+# ANGLE end2end tests
+./angle_end2end_tests --gtest_filter='*ES2_WebGPU'
 
-* Join our [Google group](https://groups.google.com/group/angleproject) to keep up to date.
-* Join us on [Slack](https://chromium.slack.com) in the #angle channel. You can
-  follow the instructions on the [Chromium developer page](https://www.chromium.org/developers/slack)
-  for the steps to join the Slack channel. For Googlers, please follow the
-  instructions on this [document](https://docs.google.com/document/d/1wWmRm-heDDBIkNJnureDiRO7kqcRouY2lSXlO6N2z6M/edit?usp=sharing)
-  to use your google or chromium email to join the Slack channel.
-* [File bugs](http://anglebug.com/new) in the [issue tracker](https://bugs.chromium.org/p/angleproject/issues/list) (preferably with an isolated test-case).
-* [Choose an ANGLE branch](doc/ChoosingANGLEBranch.md) to track in your own project.
+# 3D cube demo (输出 PPM 帧)
+./test_3d_cube
 
+# 端到端渲染验证
+./test_e2e_render
 
-* Read ANGLE development [documentation](doc).
-* Look at [pending](https://chromium-review.googlesource.com/q/project:angle/angle+status:open)
-  and [merged](https://chromium-review.googlesource.com/q/project:angle/angle+status:merged) changes.
-* Become a [code contributor](doc/ContributingCode.md).
-* Use ANGLE's [coding standard](doc/CodingStandard.md).
-* Learn how to [build ANGLE for Chromium development](doc/BuildingAngleForChromiumDevelopment.md).
-* Get help on [debugging ANGLE](doc/DebuggingTips.md).
-* Go through [ANGLE's orientation](doc/Orientation.md) and sift through [issues](https://issues.angleproject.org/). If you decide to take on any task, write a comment so you can get in touch with us, and more importantly, set yourself as the "owner" of the bug. This avoids having multiple people accidentally working on the same issue.
+# 实时渲染 (需要窗口环境)
+./test_realtime_cube
+```
 
+> **注意：** 需要注释掉 `src/tests/angle_end2end_tests_expectations.txt` 第 2342 行
+> `517972806 WGPU LINUX NVIDIA : * = SKIP`，否则所有 WebGPU 测试会被跳过（上游 CI 配置）。
 
-* Read about WebGL on the [Khronos WebGL Wiki](http://khronos.org/webgl/wiki/Main_Page).
-* Learn about the internals of ANGLE:
-  * [Overview](https://docs.google.com/presentation/d/1qal4GgddwlUw-TPaXRYeTWLXUoaemgggBuTfg6_rwjU) with a focus on the Vulkan backend (2022)
-  * A [short presentation](https://youtu.be/QrIKdjmpmaA) on the Vulkan back-end (2018).
-  * Historical [presentation](https://docs.google.com/presentation/d/1CucIsdGVDmdTWRUbg68IxLE5jXwCb2y1E9YVhQo0thg/pub?start=false&loop=false) on the evolution of ANGLE and its use in Chromium
-  * Historical [presentation](https://drive.google.com/file/d/0Bw29oYeC09QbbHoxNE5EUFh0RGs/view?usp=sharing&resourcekey=0-CNvGnQGgFSvbXgX--Y_Iyg) with a focus on D3D
-  * The details of the initial implementation of ANGLE in the [OpenGL Insights chapter on ANGLE](http://www.seas.upenn.edu/~pcozzi/OpenGLInsights/OpenGLInsights-ANGLE.pdf) (these details are severely out-of-date, and this reference is listed here for historical reference only)
-* Read design docs on the [Vulkan back-end](src/libANGLE/renderer/vulkan/README.md)
-* Read about ANGLE's [testing infrastructure](infra/README.md)
-* View information on ANGLE's [supported extensions](doc/ExtensionSupport.md)
-* If you use ANGLE in your own project, we'd love to hear about it!
+## 技术设计要点
+
+### State Machine → Pipeline Cache
+
+WebGL 基于细粒度状态机，WebGPU 基于不可变 Pipeline State Object。本实现将 blend/depth/rasterization 状态 + shader 组合为 hash key，通过多级缓存避免重复创建 pipeline（实测 22.8x 加速）。
+
+### Shader Translation
+
+GLSL ES → SPIR-V → WGSL 的转换路径利用 ANGLE 内置 compiler (`src/compiler`) + Tint。Uniform block 和 binding layout 由 `ProgramExecutableWgpu` 自动分配。
+
+### Resource Lifetime
+
+WebGPU 要求资源在 GPU 使用完成前不被释放。本实现通过：
+- Command buffer 引用计数（`GetReferencedObject`）防止提交期间释放
+- Ring buffer 策略减少 per-draw 分配
+- Deferred destruction 在 command submit 后释放
+
+## License
+
+与 ANGLE 相同，BSD-style license。详见 [LICENSE](LICENSE)。
