@@ -1,0 +1,9 @@
+out/
+third_party/
+buildtools/
+build/
+tools/
+testing/
+.cipd/
+*.pyc
+__pycache__/

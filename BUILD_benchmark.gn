@@ -1,0 +1,14 @@
+import("//build/config/sanitizers/sanitizers.gni")
+
+executable("benchmark_uniform") {
+  sources = [ "benchmark_uniform.cpp" ]
+  deps = [
+    "//third_party/dawn/src/dawn:dawn_proc_static",
+    "//third_party/dawn/src/dawn/native:dawn_native_static",
+  ]
+  include_dirs = [
+    "//third_party/dawn/include",
+    "//third_party/dawn/src/include",
+    "\/../gen/third_party/dawn/include",
+  ]
+}
