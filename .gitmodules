@@ -311,3 +311,6 @@
 	path = third_party/expat/src
 	url = https://chromium.googlesource.com/external/github.com/libexpat/libexpat
         gclient-condition = not build_with_chromium and host_os == "linux"
+[submodule "third_party/MotionMark"]
+	path = third_party/MotionMark
+	url = https://github.com/WebKit/MotionMark.git

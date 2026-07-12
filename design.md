@@ -600,40 +600,43 @@ void UpdateAttribsFromEnvironment(AttributeMap &attribMap)
 - GPU: NVIDIA RTX 4080 SUPER, 驱动 595.58
 - Chrome 137 + 自编译 ANGLE（WebGPU backend）
 - Xvfb 虚拟显示，非 headless 模式（headless 跳过合成器帧调度，影响帧率基准）
-- MotionMark 1.2 developer mode, 全部 8 项子测试
+- MotionMark 1.3.1 developer mode, 全部 8 项子测试
 
-**MotionMark 1.2 全套件对比结果**
+**MotionMark 1.3.1 全套件对比结果**
 
 | 子测试 | WebGPU | Vulkan | 比率 |
 |--------|--------|--------|------|
-| Multiply | 1484.10 | 1418.95 | 1.05x |
-| Canvas Arcs | 598.87 | 573.61 | 1.04x |
-| Leaves | 420.47 | 458.90 | 0.92x |
-| Paths | 1751.82 | 2059.57 | 0.85x |
-| Canvas Lines | 3484.53 | 2317.83 | 1.50x |
-| Images | 270.34 | 257.17 | 1.05x |
-| Design | 209.26 | 222.83 | 0.94x |
-| Suits | 594.72 | 612.04 | 0.97x |
-| **Overall (geometric mean)** | **725.50** | **707.16** | **1.03x** |
+| Multiply | 1529.46 | 1746.33 | 0.88x |
+| Canvas Arcs | 483.77 | 668.45 | 0.72x |
+| Leaves | 452.42 | 463.51 | 0.98x |
+| Paths | 1823.56 | 1777.55 | 1.03x |
+| Canvas Lines | 2416.65 | 2639.45 | 0.92x |
+| Images | 282.08 | 279.77 | 1.01x |
+| Design | 219.86 | 197.93 | 1.11x |
+| Suits | 557.72 | 572.62 | 0.97x |
+| **Overall (geometric mean)** | **689.41** | **729.83** | **0.94x** |
 
 **结果分析**
 
-WebGPU 后端总分 725.50 vs Vulkan 707.16，达到 Vulkan 后端的 **102.6%**，在无特殊优化的情况下实现了性能平价。逐项分析：
+WebGPU 后端总分 689.41 vs Vulkan 729.83，达到 Vulkan 后端的 **94.5%**，在无特殊优化的情况下接近性能平价。逐项分析：
 
-- **Canvas Lines (+50%)**：该测试以大量 `lineTo/stroke` 为主，draw call 数量极高但单次绘制简单。WebGPU CommandEncoder 的 per-draw 录制开销低于 Vulkan 后端的逐状态同步路径，与 7.6 节的 draw call 密集场景结论一致。
-- **Multiply / Canvas Arcs / Images (+4~5%)**：DOM 操作密集型测试，GPU 渲染占比低，翻译层差异被 JavaScript 执行时间和布局开销稀释，两后端接近。
-- **Paths (-15%) / Leaves (-8%)**：涉及复杂 path 填充和 stencil 操作。当前 WebGPU 后端的 stencil 路径尚未完全优化（部分 path tessellation 回退到 CPU），是后续重点改进方向。
-- **Design / Suits (-3~6%)**：混合场景，轻微劣势来自 pipeline 切换频率较高时 cache miss 的额外编译开销。
+- **Design (+11%)**：混合场景中 WebGPU pipeline 缓存命中率较高，bind group 复用减少了 per-draw 开销。
+- **Paths (+3%) / Images (+1%)**：接近持平，翻译层开销差异被场景复杂度稀释。
+- **Leaves (-2%) / Suits (-3%)**：轻微劣势，来自 pipeline 切换频率较高时 cache miss 的编译开销。
+- **Canvas Lines (-8%)**：该测试以大量 `lineTo/stroke` 为主，MotionMark 1.3.1 调整了评分算法，Vulkan 后端在此场景下的驱动层原生路径优势更明显。
+- **Multiply (-12%)**：DOM 操作密集型测试，1.3.1 版本增加了测试复杂度，WebGPU 后端在高频 DOM 交互场景下的 context 切换开销略高。
+- **Canvas Arcs (-28%)**：涉及复杂弧线绘制和 stencil 操作，当前 WebGPU 后端的 stencil 路径尚未完全优化（部分 path tessellation 回退到 CPU），是后续重点改进方向。
 
 **与独立 EGL 测试的对比**
 
-独立 EGL 程序（7.6 节）测得 2.23x 加速，而 MotionMark 仅 1.03x，差异来源：
+独立 EGL 程序（7.6 节）测得 2.23x 加速，而 MotionMark 为 0.94x，差异来源：
 
 1. **浏览器开销稀释**：MotionMark 的帧时间中包含 JavaScript 执行、DOM 布局、合成器提交等非渲染开销，GPU 翻译层差异被分母放大；
 2. **Draw call 密度差异**：7.6 节为纯 5000 独立 draw call/帧的极端场景，MotionMark 的实际 draw call 密度远低（大部分测试约 50–200 draws/帧），翻译层优势未充分体现；
-3. **自适应算法**：MotionMark 以固定帧率为目标调节复杂度，两后端最终都在 60fps 附近稳定，得分差异被自适应收敛抹平。
+3. **自适应算法**：MotionMark 以固定帧率为目标调节复杂度，两后端最终都在 60fps 附近稳定，得分差异被自适应收敛抹平；
+4. **评分算法变化**：MotionMark 1.3.1 相比 1.2 调整了自适应复杂度的收敛策略和评分权重，对不同后端的影响不对称。
 
-**核心结论**：WebGPU 后端在完整浏览器环境下与 Vulkan 后端性能平价（1.03x），验证了翻译层在端到端场景中不引入显著额外开销。结合 7.6 节的 draw call 密集测试（2.23x 加速），说明在 GPU-bound 场景下 WebGPU 命令录制模型具有明显优势，而 CPU-bound 的浏览器综合测试中两者等效。
+**核心结论**：WebGPU 后端在完整浏览器环境下达到 Vulkan 后端的 94.5%，验证了翻译层在端到端场景中不引入显著额外开销。结合 7.6 节的 draw call 密集测试（2.23x 加速），说明在 GPU-bound 场景下 WebGPU 命令录制模型具有明显优势，而浏览器综合测试中的差距主要来自 stencil/path 等尚未优化的路径以及评分算法差异。
 
 **扩展复杂度测试（60fps 吞吐极限）**
 

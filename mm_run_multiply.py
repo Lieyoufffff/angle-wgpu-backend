@@ -32,8 +32,8 @@ time.sleep(2)
 print(f"GL_RENDERER: {driver.title}", flush=True)
 
 # Load MotionMark
-print("Loading MotionMark 1.2...", flush=True)
-driver.get("https://browserbench.org/MotionMark1.2/developer.html")
+print("Loading MotionMark 1.3.1...", flush=True)
+driver.get("https://browserbench.org/MotionMark1.3.1/developer.html")
 time.sleep(8)
 print(f"Page: {driver.title}", flush=True)
 
@@ -169,7 +169,7 @@ return out;
 """)
 
 print("\n" + "="*60, flush=True)
-print(" MotionMark 1.2 - ANGLE WebGPU Backend (Multiply)", flush=True)
+print(" MotionMark 1.3.1 - ANGLE WebGPU Backend (Multiply)", flush=True)
 print("="*60, flush=True)
 print(json.dumps(data, indent=2), flush=True)
 

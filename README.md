@@ -37,20 +37,21 @@
 | test_e2e_render | PASS — 端到端渲染正确性验证 |
 | test_device_sync | PASS — WebGPU device 同步创建 |
 | test_realtime_cube | 运行 ~35 FPS (SwiftShader CPU 渲染) |
-| MotionMark 1.2 | 8 项子测试全部通过 |
+| MotionMark 1.3.1 | 8 项子测试全部通过，总分达到 Vulkan 后端 94.5% |
 
-### MotionMark 1.2 分数 (ANGLE WebGPU Backend)
+### MotionMark 1.3.1 全套件对比 (WebGPU vs Vulkan)
 
-| 子测试 | 分数 |
-|--------|------|
-| Multiply | 1740.59 |
-| Canvas Arcs | 674.43 |
-| Leaves | 468.09 |
-| Paths | 2334.27 |
-| Canvas Lines | 3167.95 |
-| Images | 311.43 |
-| Design | 251.52 |
-| Suits | 800.94 |
+| 子测试 | WebGPU | Vulkan | 比率 |
+|--------|--------|--------|------|
+| Multiply | 1529.46 | 1746.33 | 0.88x |
+| Canvas Arcs | 483.77 | 668.45 | 0.72x |
+| Leaves | 452.42 | 463.51 | 0.98x |
+| Paths | 1823.56 | 1777.55 | 1.03x |
+| Canvas Lines | 2416.65 | 2639.45 | 0.92x |
+| Images | 282.08 | 279.77 | 1.01x |
+| Design | 219.86 | 197.93 | 1.11x |
+| Suits | 557.72 | 572.62 | 0.97x |
+| **Overall (geometric mean)** | **689.41** | **729.83** | **0.94x** |
 
 ### Performance Benchmarks
 
@@ -84,6 +85,10 @@
 ├── benchmark_sampler_cache.cpp   # sampler 缓存 benchmark
 ├── benchmark_uniform.cpp         # uniform 分配 benchmark
 ├── benchmark_frame_stability.cpp # 帧稳定性 benchmark
+├── third_party/MotionMark/       # MotionMark 1.3.1 浏览器图形基准测试 (submodule)
+│   └── MotionMark/
+│       ├── developer.html        # 开发者测试入口
+│       └── tests/                # 子测试 (Multiply, Canvas Arcs, Leaves 等)
 └── BUILD.gn                      # 构建定义 (含自定义 target)
 ```
 
