@@ -32,11 +32,11 @@
 
 | 测试 | 结果 |
 |------|------|
-| ANGLE end2end tests (ES2_WebGPU) | **733 通过, 0 失败** |
-| test_3d_cube | PASS — 3D 旋转立方体 (depth test + MVP + indexed draw) |
+| 独立 E2E 功能验证 | **8/10 通过** (2 项已知限制: depth test、buffer re-upload) |
+| 跨后端像素对比 | 6 组场景, 4 组 100% 像素一致, 2 组差异仅来自深度路径缺失 |
+| test_3d_cube | PASS — 3D 旋转立方体 (MVP + indexed draw) |
 | test_e2e_render | PASS — 端到端渲染正确性验证 |
 | test_device_sync | PASS — WebGPU device 同步创建 |
-| test_realtime_cube | 运行 ~35 FPS (SwiftShader CPU 渲染) |
 | MotionMark 1.3.1 | 8 项子测试全部通过，总分达到 Vulkan 后端 94.5% |
 
 ### MotionMark 1.3.1 全套件对比 (WebGPU vs Vulkan)
