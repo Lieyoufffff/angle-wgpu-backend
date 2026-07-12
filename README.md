@@ -32,11 +32,11 @@
 
 ### 3D 立方体 (WebGPU vs Vulkan)
 
-https://github.com/Lieyoufffff/angle-wgpu-backend/raw/main/comparison.mp4
+![3D Cube Comparison](comparison.gif)
 
 ### 2D 渲染 (WebGPU vs Vulkan)
 
-https://github.com/Lieyoufffff/angle-wgpu-backend/raw/main/comparison_2d.mp4
+![2D Rendering Comparison](comparison_2d.gif)
 
 ## 测试结果
 
