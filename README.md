@@ -28,6 +28,16 @@
 | Buffer Usage 修正 | `BufferWgpu.cpp` | 为所有 GL buffer binding 类型映射正确的 WebGPU usage flags |
 | 各类 Fallback | `wgpu_utils.cpp`, `wgpu_helpers.cpp` | CullFaceMode、CLAMP_TO_BORDER、shadow sampler 等合理降级 |
 
+## 渲染演示
+
+### 3D 立方体 (WebGPU vs Vulkan)
+
+https://github.com/Lieyoufffff/angle-wgpu-backend/raw/main/comparison.mp4
+
+### 2D 渲染 (WebGPU vs Vulkan)
+
+https://github.com/Lieyoufffff/angle-wgpu-backend/raw/main/comparison_2d.mp4
+
 ## 测试结果
 
 | 测试 | 结果 |
